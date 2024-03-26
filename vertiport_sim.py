@@ -26,6 +26,7 @@ class VertiportSimulation:
                  tlof_feedback=True,
                  blocking=False,
                  is_logging=False,
+                 no_pax_arrival=False,
                  seed=0):
         self.env = env
         self.aircraft_ids = iter(aircraft_ids)  # Make iterators
@@ -34,13 +35,14 @@ class VertiportSimulation:
         self.passenger_mean_interarrival_time = passenger_mean_interarrival_time
         self.num_park = num_park
         self.tlof_mean_service_time = tlof_mean_service_time
-        self.charge_mean_service_time = charge_mean_service_time/self.num_park
+        self.charge_mean_service_time = charge_mean_service_time
         self.seat_capacity = seat_capacity
         self.termination_event = termination_event
         self.stochastic = stochastic
         self.tlof_feedback = tlof_feedback
         self.blocking = blocking
         self.terminal_buffer_capacity = terminal_buffer_capacity
+        self.no_pax_arrival = no_pax_arrival
         self.is_logging = is_logging
         self.simulation_start_datetime = datetime(2024, 1, 1)
         self.seed = seed
@@ -48,7 +50,7 @@ class VertiportSimulation:
         # Servers and queues
         self.tlof_server = simpy.PriorityResource(env, capacity=1)
         self.tlof_server2 = simpy.PriorityResource(env, capacity=1)
-        self.park_server = simpy.Resource(env, capacity=1)
+        self.park_server = simpy.Resource(env, capacity=num_park)
         self.passenger_queue = []
         self.aircraft_departure_queue = simpy.Store(env)
         # Statistics
@@ -64,11 +66,11 @@ class VertiportSimulation:
         self.departing_passenger_queue_length = 0
         self.passenger_service_queue_length = 0
         self.terminal_store = simpy.Store(env, capacity=self.terminal_buffer_capacity)
-        self.surface_store = simpy.Store(env, capacity=1)
+        self.surface_store = simpy.Store(env, capacity=num_park)
         # Populate the surface store with the number of parking spots
-        # for i in range(num_park):
-        #     self.surface_store.put('park')
-        self.surface_store.put('park')
+        for _ in range(num_park):
+            self.surface_store.put('park')
+        # self.surface_store.put('park')
         
         # If terminal buffer capacity is not infinite, then populate the terminal store with the capacity
         if self.terminal_buffer_capacity != np.inf:
@@ -163,7 +165,7 @@ class VertiportSimulation:
                 
                 self.logger.debug(f"{aircraft_id} will request terminal buffer at {self.convert_hr_to_dt(self.env.now)}. Num aircraft at terminal buffer: {self.terminal_buffer_capacity - len(self.terminal_store.items)}")
                 if self.terminal_buffer_capacity != np.inf and len(self.terminal_store.items) == 0:
-                    self.logger.debug(f"{aircraft_id} rejected at {self.convert_hr_to_dt(self.env.now)}")
+                    # self.logger.debug(f"{aircraft_id} rejected at {self.convert_hr_to_dt(self.env.now)}")
                     # last_value = self.get_latest_value_from_dict(self.rejected_aircraft_counter)
                     self.rejected_aircraft_counter += 1
                     continue
@@ -198,12 +200,12 @@ class VertiportSimulation:
         yield self.terminal_store.get()
         # Save the terminal queue length
         self.update_aircraft_arrival_queue_length(update=1)
-        self.logger.debug(f"{aircraft_id} entered the terminal buffer at {self.convert_hr_to_dt(self.env.now)}. Num aircraft at terminal buffer: {self.terminal_buffer_capacity - len(self.terminal_store.items)}")
-        self.logger.debug(f"Number of aircraft at the terminal buffer from queue length counter: {list(self.queue_lengths['aircraft_arrival_queue'].values())[-1]}")
+        # self.logger.debug(f"{aircraft_id} entered the terminal buffer at {self.convert_hr_to_dt(self.env.now)}. Num aircraft at terminal buffer: {self.terminal_buffer_capacity - len(self.terminal_store.items)}")
+        # self.logger.debug(f"Number of aircraft at the terminal buffer from queue length counter: {list(self.queue_lengths['aircraft_arrival_queue'].values())[-1]}")
 
     def request_surface(self, aircraft_id):
         yield self.surface_store.get()
-        self.logger.debug(f"{aircraft_id} got the surface reservation at {self.convert_hr_to_dt(self.env.now)}. Num aircraft at surface: {self.num_park - len(self.surface_store.items)}")
+        # self.logger.debug(f"{aircraft_id} got the surface reservation at {self.convert_hr_to_dt(self.env.now)}. Num aircraft at surface: {self.num_park - len(self.surface_store.items)}")
 
     def turnaround_process(self, aircraft_id, start_time):
         # TLOF and Park handling with exponential service times
@@ -213,8 +215,8 @@ class VertiportSimulation:
             self.update_aircraft_arrival_queue_length(update=-1)            
             # Open space in the terminal buffer
             self.terminal_store.put('capacity')
-            self.logger.debug(f"{aircraft_id} left the terminal buffer at {self.convert_hr_to_dt(self.env.now)}. Num aircraft at terminal buffer: {self.terminal_buffer_capacity - len(self.terminal_store.items)}")
-            self.logger.debug(f"Number of aircraft at the terminal buffer from queue length counter: {list(self.queue_lengths['aircraft_arrival_queue'].values())[-1]}")
+            # self.logger.debug(f"{aircraft_id} left the terminal buffer at {self.convert_hr_to_dt(self.env.now)}. Num aircraft at terminal buffer: {self.terminal_buffer_capacity - len(self.terminal_store.items)}")
+            # self.logger.debug(f"Number of aircraft at the terminal buffer from queue length counter: {list(self.queue_lengths['aircraft_arrival_queue'].values())[-1]}")
             # Save the tlof queue waiting time
             self.waiting_times['aircraft'][aircraft_id]['tlof_arrival_queue_waiting_time'] = self.env.now - start_time
             # Get the landing process time
@@ -230,8 +232,8 @@ class VertiportSimulation:
         # Increase the surface count
         last_value = self.get_latest_value_from_dict(self.surface_aircraft_count)
         self.surface_aircraft_count[self.env.now] = last_value + 1
-        # Log the surface count
-        self.logger.debug(f"{aircraft_id} landed at {self.convert_hr_to_dt(self.env.now)}. Num aircraft at surface: {self.num_park - len(self.surface_store.items)}")
+        # # Log the surface count
+        # self.logger.debug(f"{aircraft_id} landed at {self.convert_hr_to_dt(self.env.now)}. Num aircraft at surface: {self.num_park - len(self.surface_store.items)}")
         
         start_time = self.env.now
         # Save the park queue length
@@ -240,7 +242,7 @@ class VertiportSimulation:
         with self.park_server.request() as request:
             yield request
             # Log parking time
-            self.logger.debug(f"{aircraft_id} parked at {self.convert_hr_to_dt(self.env.now)}. Num aircraft at surface: {self.num_park - len(self.surface_store.items)}")
+            # self.logger.debug(f"{aircraft_id} parked at {self.convert_hr_to_dt(self.env.now)}. Num aircraft at surface: {self.num_park - len(self.surface_store.items)}")
             # Update the park queue length
             self.update_park_queue_length(update=-1)
             self.waiting_times['aircraft'][aircraft_id]['park_queue_waiting_time'] = self.env.now - start_time
@@ -251,12 +253,16 @@ class VertiportSimulation:
             yield self.env.timeout(charge_process_time)
             # Save the charge time
             self.process_times['aircraft'][aircraft_id]['charge_process_time'] = charge_process_time
-        # Put aircraft in the the available departure queue
-        self.aircraft_departure_queue.put(aircraft_id)
-        self.time_logs['aircraft'][aircraft_id]['departure_queue_enter_time'] = self.env.now
+        
+        if self.no_pax_arrival:
+            self.env.process(self.departure_process(aircraft_id))
+        else:
+            # Put aircraft in the the available departure queue
+            self.aircraft_departure_queue.put(aircraft_id)
+            self.time_logs['aircraft'][aircraft_id]['departure_queue_enter_time'] = self.env.now
 
-        self.logger.debug(f"{aircraft_id} charged and entered the departure queue at {self.convert_hr_to_dt(self.env.now)}. Num aircraft at surface: {self.num_park - len(self.surface_store.items)}")
-        self.logger.debug(f"Number of aircraft at the departure queue: {list(self.queue_lengths['aircraft_departure_queue'].values())[-1]}")
+        # self.logger.debug(f"{aircraft_id} charged and entered the departure queue at {self.convert_hr_to_dt(self.env.now)}. Num aircraft at surface: {self.num_park - len(self.surface_store.items)}")
+        # self.logger.debug(f"Number of aircraft at the departure queue: {list(self.queue_lengths['aircraft_departure_queue'].values())[-1]}")
 
     def passenger_process(self):
         while True:
@@ -279,8 +285,8 @@ class VertiportSimulation:
                 self.queue_lengths['passenger_service_queue'][time] = self.passenger_service_queue_length   
 
                 # Log the passenger arrival
-                self.logger.debug(f"{passenger_id} arrived at {self.convert_hr_to_dt(self.env.now)}. Num passengers at passenger service queue: {list(self.queue_lengths['passenger_service_queue'].values())[-1]}")
-                self.logger.debug(f"Number of passengers at the passenger service queue counter: {self.passenger_service_queue_length}")
+                # self.logger.debug(f"{passenger_id} arrived at {self.convert_hr_to_dt(self.env.now)}. Num passengers at passenger service queue: {list(self.queue_lengths['passenger_service_queue'].values())[-1]}")
+                # self.logger.debug(f"Number of passengers at the passenger service queue counter: {self.passenger_service_queue_length}")
                     
                 self.passenger_queue.append(passenger_id)
                 # Save the passenger queue length
@@ -310,34 +316,40 @@ class VertiportSimulation:
         # Update the departure queue length
         self.update_aircraft_departure_queue_length(update=1)
         # Log the passenger departure and aircraft departure
-        self.logger.debug(f"{departing_passengers} assigned to {aircraft_id} at {self.convert_hr_to_dt(self.env.now)}. Num passengers at passenger service queue: {list(self.queue_lengths['passenger_service_queue'].values())[-1]}")
-        self.logger.debug(f"Departure queue length: {list(self.queue_lengths['aircraft_departure_queue'].values())[-1]}")
-        # If there are more passengers than the seat capacity, get the first 4 passengers. If there are less than seat_capacity, get all passengers
-        # num_pax = len(self.passenger_queue) if len(self.passenger_queue) < self.seat_capacity else self.seat_capacity
+        # self.logger.debug(f"{departing_passengers} assigned to {aircraft_id} at {self.convert_hr_to_dt(self.env.now)}. Num passengers at passenger service queue: {list(self.queue_lengths['passenger_service_queue'].values())[-1]}")
+        # self.logger.debug(f"Departure queue length: {list(self.queue_lengths['aircraft_departure_queue'].values())[-1]}")
         
         self.departing_passenger_queue_length += len(departing_passengers)
         for passenger_id in departing_passengers:
             self.time_logs['passenger'][passenger_id]['departure_queue_exit_time'] = self.env.now
             self.waiting_times['passenger'][passenger_id]['waiting_time'] = self.env.now - self.arrival_departure_times['passenger'][passenger_id]['arrival_time']
 
-        # Blocking of the surface ends here.
-        self.surface_store.put('park')
+        # # Blocking of the surface ends here.
+        # self.surface_store.put('park')
         # Decrese the surface count
         last_value = self.get_latest_value_from_dict(self.surface_aircraft_count)
         self.surface_aircraft_count[self.env.now] = last_value - 1
 
-        # Log surface count
-        self.logger.debug(f"Num aircraft at surface: {self.num_park - len(self.surface_store.items)}")
+        # # Log surface count
+        # self.logger.debug(f"Num aircraft at surface: {self.num_park - len(self.surface_store.items)}")
         
         self.env.process(self.departure_process(aircraft_id))
 
+    def put_back_surface_capacity(self):
+        self.surface_store.put('park')
+
     def departure_process(self, aircraft_id):
         start_time = self.env.now
+        # # Blocking of the surface ends here.
+        # self.put_back_surface_capacity()
 
         if self.tlof_feedback:
             # Request the tlof server
             with self.tlof_server.request(priority=1) as request:
                 yield request
+
+                # # Blocking of the surface ends here.
+                # self.surface_store.put('park')
                 # Save the pushback time
                 self.arrival_departure_times['aircraft'][aircraft_id]['pushback_time'] = self.env.now
                 # Update the departure queue length
@@ -377,6 +389,9 @@ class VertiportSimulation:
                 else:
                     departure_process_time = self.tlof_mean_service_time
                 yield self.env.timeout(departure_process_time)
+
+        # Blocking of the surface ends here.
+        self.put_back_surface_capacity()                
         # Save the tlof service time
         self.process_times['aircraft'][aircraft_id]['departure_process_time'] = departure_process_time
         # Update the departure counter
@@ -390,21 +405,21 @@ class VertiportSimulation:
         if agent_type == 'aircraft':
             if len(tracker) == 0:
                 return time
-            if time not in list(tracker[agent_type].keys()):
+            if time not in list(tracker[agent_type].keys())[-3:]:
                 return time
             time += 1/60/60/1000  # add 0.01 milisecond
             return self.is_time_overlapping(time=time, agent_type=agent_type, tracker=tracker)
         elif agent_type == 'passenger':
             if len(tracker) == 0:
                 return time
-            if time not in list(tracker[agent_type].keys()):
+            if time not in list(tracker[agent_type].keys())[-3:]:
                 return time
             time += 1/60/60/1000
             return self.is_time_overlapping(time=time, agent_type=agent_type, tracker=tracker)
         elif agent_type == 'queue':
             if len(tracker) == 0:
                 return time
-            if time not in list(tracker.keys()):
+            if time not in list(tracker.keys())[-3:]:
                 return time
             time += 1/60/60/1000
             return self.is_time_overlapping(time=time, agent_type=agent_type, tracker=tracker)

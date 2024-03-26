@@ -134,7 +134,8 @@ def save_simulation_results_postgres(db_name, parameters, system_metrics):
                 num_park INTEGER, 
                 aircraft_arrival_rate INTEGER, 
                 passenger_arrival_rate INTEGER, 
-                charge_time INTEGER, 
+                tlof_time REAL,
+                charge_time REAL,
                 terminal_buffer_capacity REAL, 
                 blocking BOOLEAN, 
                 num_rejected_aircraft INTEGER,
@@ -150,14 +151,15 @@ def save_simulation_results_postgres(db_name, parameters, system_metrics):
         # Insert a row
         cur.execute('''
             INSERT INTO simulation_metrics (
-                tlof_feedback, seed, num_park, aircraft_arrival_rate, passenger_arrival_rate, charge_time, terminal_buffer_capacity, blocking, num_rejected_aircraft, aircraft_throughput_rate, terminal_queue_length, avg_num_aircraft_at_surface, passenger_queue_length, variance_in_terminal_queue_length, variance_in_pax_queue_length
-            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                tlof_feedback, seed, num_park, aircraft_arrival_rate, passenger_arrival_rate, tlof_time, charge_time, terminal_buffer_capacity, blocking, num_rejected_aircraft, aircraft_throughput_rate, terminal_queue_length, avg_num_aircraft_at_surface, passenger_queue_length, variance_in_terminal_queue_length, variance_in_pax_queue_length
+            ) VALUES (%s, %s, %s, %s, %s, %s ,%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         ''', (
             parameters['tlof_feedback'],
             parameters['seed'], 
             parameters['num_park'], 
             parameters['aircraft_arrival_rate'], 
             parameters['passenger_arrival_rate'], 
+            parameters['tlof_time'],
             parameters['charge_time'], 
             parameters['terminal_buffer_capacity'], 
             parameters['blocking'], 
